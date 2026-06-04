@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Virtual Video Switcher</title>
+<style>
+  :root{
+    --bg:#05070c; --panel:#111722; --panel2:#0b1018; --line:#2b3546;
+    --green:#31ff4c; --red:#ff3131; --amber:#ffd24a; --blue:#1da2ff;
+    --text:#e9f2ff; --muted:#9fb0c6;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:radial-gradient(circle at top,#18243a 0%,#05070c 55%,#020308 100%);
+    font-family:Arial, Helvetica, sans-serif; color:var(--text); overflow-x:hidden;
+  }
+  .app{width:min(1500px,100vw); margin:0 auto; padding:14px;}
+  .multiview{
+    background:linear-gradient(180deg,#111827,#070b12); border:2px solid #263348;
+    border-radius:12px; padding:12px; box-shadow:0 0 35px rgba(0,120,255,.18);
+  }
+  .hero{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;}
+  .monitor{
+    position:relative; height:210px; border:2px solid var(--line); border-radius:8px; overflow:hidden;
+    background:#000; box-shadow:inset 0 0 18px rgba(255,255,255,.05);
+  }
+  .monitor.preview{border-color:var(--green)}
+  .monitor.program{border-color:var(--red)}
+  .tag{
+    position:absolute; z-index:5; top:0; left:0; padding:8px 18px 8px 12px;
+    background:rgba(0,0,0,.75); border-bottom-right-radius:14px; font-weight:900; letter-spacing:.06em;
+  }
+  .preview .tag{color:var(--green)} .program .tag{color:var(--red)}
+  .meters{position:absolute; right:8px; top:36px; bottom:14px; width:9px; display:flex; flex-direction:column-reverse; gap:2px; z-index:6}
+  .meters span{flex:1; border-radius:1px; background:linear-gradient(180deg,#f00,#ff0,#0f0); opacity:.95}
+  .source-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
+  .tile{
+    position:relative; height:105px; border:1px solid #536071; border-radius:6px; overflow:hidden; background:#02040a;
+  }
+  .tile.preview-outline{border:2px solid var(--green); box-shadow:0 0 12px rgba(49,255,76,.45)}
+  .tile.program-outline{border:2px solid var(--red); box-shadow:0 0 12px rgba(255,49,49,.45)}
+  .tile-label{
+    position:absolute; top:0; left:0; z-index:5; padding:4px 9px; font-size:13px; font-weight:bold;
+    background:rgba(0,0,0,.78); border-bottom-right-radius:8px;
+  }
+  .visual{position:absolute; inset:0; overflow:hidden; background:#08111e;}
+  .visual::before,.visual::after{content:""; position:absolute; inset:-40%; animation:spin 7s linear infinite; opacity:.85}
+  .visual::before{background:conic-gradient(from 0deg,#154bff,#9d2cff,#00e5ff,#154bff)}
+  .visual::after{background:radial-gradient(circle at 40% 45%,rgba(255,255,255,.8),transparent 9%), repeating-linear-gradient(90deg,transparent 0 42px,rgba(255,255,255,.16) 43px 47px); mix-blend-mode:screen; animation:drift 3s ease-in-out infinite alternate}
+  .cam2::before{background:conic-gradient(#2d0b75,#ff37b2,#006bff,#2d0b75)}
+  .cam3::after{background:radial-gradient(circle at 65% 35%,#fff 0 7%,transparent 8%),linear-gradient(110deg,transparent 0 45%,rgba(255,255,255,.4) 46% 48%,transparent 50%)}
+  .cam4::before{background:repeating-linear-gradient(135deg,#06112a 0 30px,#004fff 31px 34px,#4016a7 35px 60px)}
+  .cam5::before{background:radial-gradient(circle,#ff3aa8,transparent 23%),linear-gradient(45deg,#10193a,#09111f)}
+  .cam6::before{background:repeating-radial-gradient(circle,#0af 0 8px,#07152b 9px 24px)}
+  .cam7::before{background:linear-gradient(90deg,#021,#006bff,#020); animation:drift 2.4s ease-in-out infinite alternate}
+  .cam8::before{background:conic-gradient(#060b18,#2dfcff,#642cff,#060b18)}
+  .centerText{position:absolute; inset:0; display:grid; place-items:center; z-index:3; text-align:center; font-weight:900; font-size:22px; text-shadow:0 2px 8px #000}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes drift{to{transform:translateX(8%) translateY(-4%) scale(1.08)}}
+  .switcher{
+    margin-top:12px; background:linear-gradient(180deg,#202632,#0d1118); border:2px solid #273348;
+    border-radius:12px; padding:18px; display:grid; grid-template-columns:1.5fr .75fr .8fr; gap:18px;
+    box-shadow:0 -10px 35px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+  }
+  .section{border:1px solid #38465a; border-radius:10px; padding:14px; background:rgba(0,0,0,.16)}
+  .bus-label{text-align:center; font-size:13px; font-weight:900; letter-spacing:.08em; margin:0 0 7px}
+  .program-label{color:var(--red)} .preview-label{color:var(--green)}
+  .bus{display:grid; grid-template-columns:repeat(8,1fr); gap:9px; margin-bottom:16px}
+  button{
+    border:1px solid #8f9bad; border-radius:7px; background:linear-gradient(#f7f8fb,#a7b0bd);
+    color:#101722; font-weight:900; font-size:18px; height:46px; cursor:pointer;
+    box-shadow:0 5px 0 #303742, 0 0 12px rgba(255,255,255,.08);
+  }
+  button:active{transform:translateY(3px); box-shadow:0 2px 0 #303742}
+  button.selected-preview{background:linear-gradient(#89ff8d,#14d92c); border-color:var(--green); box-shadow:0 5px 0 #0b6d1a,0 0 20px rgba(49,255,76,.7)}
+  button.selected-program{background:linear-gradient(#ff8b8b,#e31818); border-color:var(--red); color:#fff; box-shadow:0 5px 0 #710b0b,0 0 20px rgba(255,49,49,.7)}
+  .key-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:9px}
+  .key-grid button{font-size:14px}
+  .transition-controls{display:grid; grid-template-columns:120px 1fr; gap:14px; align-items:center}
+  .big{height:64px; font-size:24px; color:#fff}
+  .cut{background:linear-gradient(#2b0b0b,#991212); border-color:#ff5b39; color:#ffb5a6}
+  .auto{background:linear-gradient(#33260a,#9a6d00); border-color:#ffd24a; color:#fff2b1}
+  input[type=range]{
+    writing-mode:bt-lr; -webkit-appearance:slider-vertical; width:70px; height:195px; accent-color:var(--blue); cursor:pointer;
+  }
+  .tbarbox{text-align:center}
+  .small-note{color:var(--muted); font-size:12px; text-align:center; margin-top:8px}
+  .fadeLayer{position:absolute; inset:0; opacity:0; pointer-events:none; z-index:2}
+  @media (max-width:900px){
+    .hero{grid-template-columns:1fr}.source-grid{grid-template-columns:repeat(2,1fr)}
+    .switcher{grid-template-columns:1fr}.bus{grid-template-columns:repeat(4,1fr)}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="multiview">
+    <div class="hero">
+      <div class="monitor preview" id="previewMonitor"><div class="tag">PREVIEW</div><div class="meters"></div></div>
+      <div class="monitor program" id="programMonitor"><div class="tag">PROGRAM</div><div class="meters"></div></div>
+    </div>
+    <div class="source-grid" id="sourceGrid"></div>
+  </div>
+
+  <div class="switcher">
+    <div class="section">
+      <p class="bus-label program-label">PROGRAM BUS</p>
+      <div class="bus" id="programBus"></div>
+      <p class="bus-label preview-label">PREVIEW BUS</p>
+      <div class="bus" id="previewBus"></div>
+      <div class="small-note">Each bus is one row: 8 sources across.</div>
+    </div>
+
+    <div class="section">
+      <p class="bus-label" style="color:var(--blue)">KEY SELECTION</p>
+      <div class="key-grid" id="keyGrid"></div>
+    </div>
+
+    <div class="section transition-controls">
+      <div>
+        <button class="big cut" id="cutBtn">CUT</button><br><br>
+        <button class="big auto" id="autoBtn">AUTO</button>
+      </div>
+      <div class="tbarbox">
+        <p class="bus-label" style="color:var(--blue)">T-BAR</p>
+        <input id="tbar" type="range" min="0" max="100" value="0" orient="vertical" />
+        <div class="small-note">Drag to crossfade</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const sources = [
+  ["CAM 1","Concert Wide","cam1"],["CAM 2","Audience","cam2"],["CAM 3","Presenter","cam3"],["CAM 4","Stage Wide","cam4"],
+  ["MEDIA 1","WELCOME","cam5"],["MEDIA 2","COUNTDOWN","cam6"],["GFX 1","LOWER THIRD","cam7"],["GFX 2","LOGO","cam8"]
+];
+let preview = 0, program = 2;
+let tbarStart = null;
+
+function visualHTML(i){
+  return `<div class="visual ${sources[i][2]}"></div><div class="centerText">${sources[i][1]}</div>`;
+}
+function makeMonitorContent(id){
+  const s = sources[id];
+  return `<div class="sourceContent">${visualHTML(id)}</div>`;
+}
+function setMonitor(el, id){
+  const tag = el.querySelector(".tag").outerHTML;
+  const meters = el.querySelector(".meters").outerHTML;
+  el.innerHTML = tag + meters + makeMonitorContent(id);
+}
+function fadeSwap(){
+  const oldPrev = preview, oldProg = program;
+  preview = oldProg; program = oldPrev;
+  crossfadeMonitor(document.getElementById("previewMonitor"), oldPrev, preview);
+  crossfadeMonitor(document.getElementById("programMonitor"), oldProg, program);
+  updateButtons();
+}
+function crossfadeMonitor(el, fromId, toId){
+  const tag = el.querySelector(".tag").outerHTML;
+  const meters = el.querySelector(".meters").outerHTML;
+  el.innerHTML = tag + meters + `<div class="base">${makeMonitorContent(fromId)}</div><div class="fadeLayer">${makeMonitorContent(toId)}</div>`;
+  const layer = el.querySelector(".fadeLayer");
+  layer.animate([{opacity:0},{opacity:1}], {duration:333, fill:"forwards", easing:"linear"}).onfinish = () => setMonitor(el,toId);
+}
+function updateButtons(){
+  document.querySelectorAll("[data-preview]").forEach((b,i)=>b.classList.toggle("selected-preview", i===preview));
+  document.querySelectorAll("[data-program]").forEach((b,i)=>b.classList.toggle("selected-program", i===program));
+  document.querySelectorAll(".tile").forEach((t,i)=>{
+    t.classList.toggle("preview-outline", i===preview);
+    t.classList.toggle("program-outline", i===program);
+  });
+}
+function cut(){
+  [preview, program] = [program, preview];
+  renderMonitors(); updateButtons();
+}
+function renderMonitors(){
+  setMonitor(document.getElementById("previewMonitor"), preview);
+  setMonitor(document.getElementById("programMonitor"), program);
+}
+function render(){
+  const sg = document.getElementById("sourceGrid");
+  sg.innerHTML = sources.map((s,i)=>`<div class="tile" id="tile${i}"><div class="tile-label">${i+1} &nbsp; ${s[0]}</div>${visualHTML(i)}</div>`).join("");
+  document.getElementById("previewBus").innerHTML = sources.map((_,i)=>`<button data-preview="${i}">${i+1}</button>`).join("");
+  document.getElementById("programBus").innerHTML = sources.map((_,i)=>`<button data-program="${i}">${i+1}</button>`).join("");
+  document.getElementById("keyGrid").innerHTML = Array.from({length:8},(_,i)=>`<button>KEY ${i+1}</button>`).join("");
+  document.querySelectorAll("[data-preview]").forEach(b=>b.onclick=()=>{preview=+b.dataset.preview; renderMonitors(); updateButtons();});
+  document.querySelectorAll("[data-program]").forEach(b=>b.onclick=()=>{program=+b.dataset.program; renderMonitors(); updateButtons();});
+  document.getElementById("cutBtn").onclick=cut;
+  document.getElementById("autoBtn").onclick=fadeSwap;
+  const meters = '<span></span>'.repeat(20);
+  document.querySelectorAll(".meters").forEach(m=>m.innerHTML=meters);
+  renderMonitors(); updateButtons();
+}
+const tbar = document.getElementById("tbar");
+tbar.addEventListener("pointerdown",()=>{tbarStart={preview,program}});
+tbar.addEventListener("input",()=>{
+  if(!tbarStart) tbarStart={preview,program};
+  const mix = tbar.value/100;
+  const prevEl = document.getElementById("previewMonitor"), progEl = document.getElementById("programMonitor");
+  const tagP = prevEl.querySelector(".tag").outerHTML, metP = prevEl.querySelector(".meters").outerHTML;
+  const tagG = progEl.querySelector(".tag").outerHTML, metG = progEl.querySelector(".meters").outerHTML;
+  prevEl.innerHTML = tagP+metP+makeMonitorContent(tbarStart.preview)+`<div class="fadeLayer" style="opacity:${mix}">${makeMonitorContent(tbarStart.program)}</div>`;
+  progEl.innerHTML = tagG+metG+makeMonitorContent(tbarStart.program)+`<div class="fadeLayer" style="opacity:${mix}">${makeMonitorContent(tbarStart.preview)}</div>`;
+});
+tbar.addEventListener("pointerup",()=>{
+  if(Number(tbar.value) >= 50){ [preview,program] = [tbarStart.program,tbarStart.preview]; }
+  tbar.value = 0; tbarStart = null; renderMonitors(); updateButtons();
+});
+render();
+</script>
+</body>
+</html>
